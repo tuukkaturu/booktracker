@@ -1,0 +1,19 @@
+{
+  "name": "BookTracker",
+  "short_name": "BookTracker",
+  "description": "Your personal reading companion",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0B14",
+  "theme_color": "#0B0B14",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["books", "lifestyle", "productivity"]
+}
