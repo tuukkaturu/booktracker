@@ -4,7 +4,9 @@ import { join, resolve } from 'node:path';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
 const PORT = parseInt(process.env.PORT ?? '3001');
 const IS_PROD = process.env.NODE_ENV === 'production';
+const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const DIST_DIR = resolve(import.meta.dir, 'dist');
+const MAX_JSON_BODY_BYTES = 5_500_000; // ~5.5 MB JSON/base64 payload cap
 
 const GEMINI_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent';
@@ -30,6 +32,20 @@ function isRateLimited(ip) {
   if (entry.count >= RATE_LIMIT) return true;
   entry.count++;
   return false;
+}
+
+function getClientIp(req, server) {
+  // Trust forwarded headers only when explicitly enabled.
+  if (TRUST_PROXY) {
+    const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+    if (forwarded) return forwarded;
+
+    const cfIp = req.headers.get('cf-connecting-ip')?.trim();
+    if (cfIp) return cfIp;
+  }
+
+  // Direct socket IP is not spoofable by clients.
+  return server.requestIP(req)?.address ?? 'unknown';
 }
 
 // Periodically purge expired rate-limit entries to avoid memory growth
@@ -86,12 +102,21 @@ function jsonResponse(data, status = 200) {
 Bun.serve({
   port: PORT,
 
-  async fetch(req) {
+  async fetch(req, server) {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
+    // ── GET /api/health ────────────────────────────────────────────────
+    if (pathname === '/api/health') {
+      return jsonResponse({
+        ok: true,
+        service: 'booktracker-api',
+        geminiConfigured: Boolean(GEMINI_API_KEY),
+      });
+    }
+
     // ── POST /api/identify-book ──────────────────────────────────────────
-    if (pathname === '/api/identify-book') {
+    if (pathname === '/api/identify-book' || pathname === '/api/identify-book/') {
       if (req.method !== 'POST') {
         return jsonResponse({ error: 'Method not allowed.' }, 405);
       }
@@ -100,11 +125,8 @@ Bun.serve({
         return jsonResponse({ error: 'Book scanning is not configured on this server.' }, 503);
       }
 
-      // Rate limit by IP
-      const ip =
-        req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-        req.headers.get('cf-connecting-ip') ??
-        'unknown';
+      // Rate limit by client IP (socket address by default)
+      const ip = getClientIp(req, server);
 
       if (isRateLimited(ip)) {
         return jsonResponse({ error: 'Too many requests. Try again in a minute.' }, 429);
@@ -113,7 +135,22 @@ Bun.serve({
       // Parse and validate body
       let body;
       try {
-        body = await req.json();
+        const contentLengthHeader = req.headers.get('content-length');
+        if (contentLengthHeader) {
+          const length = Number(contentLengthHeader);
+          if (!Number.isFinite(length) || length < 0) {
+            return jsonResponse({ error: 'Invalid Content-Length header.' }, 400);
+          }
+          if (length > MAX_JSON_BODY_BYTES) {
+            return jsonResponse({ error: 'Request body too large.' }, 413);
+          }
+        }
+
+        const rawBody = await req.text();
+        if (rawBody.length > MAX_JSON_BODY_BYTES) {
+          return jsonResponse({ error: 'Request body too large.' }, 413);
+        }
+        body = JSON.parse(rawBody);
       } catch {
         return jsonResponse({ error: 'Invalid JSON body.' }, 400);
       }
@@ -130,7 +167,7 @@ Bun.serve({
       }
 
       // Reject payloads over ~4 MB of base64 (≈ 3 MB decoded image)
-      if (data.length > 5_500_000) {
+      if (data.length > MAX_JSON_BODY_BYTES) {
         return jsonResponse({ error: 'Image too large. Maximum size is ~4 MB.' }, 413);
       }
 

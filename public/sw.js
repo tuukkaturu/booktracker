@@ -1,4 +1,4 @@
-const CACHE_NAME = 'booktracker-v1';
+const CACHE_NAME = 'booktracker-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -22,6 +22,24 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+
+  // Never cache API responses.
+  if (new URL(event.request.url).pathname.startsWith('/api/')) return;
+
+  // For app navigation, prefer network so UI updates appear immediately.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put('/index.html', clone));
+          return response;
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(cached => {
       return cached || fetch(event.request).then(response => {

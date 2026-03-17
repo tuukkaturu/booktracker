@@ -14,6 +14,9 @@ function App() {
 
   return (
     <>
+      <div className="beta-banner">
+        🚧 This app is in beta.
+      </div>
       {screen === 'library' && (
         <Library
           books={books}

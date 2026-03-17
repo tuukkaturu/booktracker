@@ -7,7 +7,9 @@ export async function identifyBookFromImage(dataUrl) {
   const [header, data] = dataUrl.split(',');
   const mimeType = header.match(/data:(.*?);/)?.[1] ?? 'image/jpeg';
 
-  const res = await fetch('/api/identify-book', {
+  const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+
+  const res = await fetch(`${apiBase}/api/identify-book`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mimeType, data }),

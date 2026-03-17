@@ -1,18 +1,78 @@
 {
   "name": "BookTracker",
-  "short_name": "BookTracker",
-  "description": "Your personal reading companion",
-  "start_url": "/",
+  "short_name": "Books",
+  "description": "Your personal reading companion. Track books, log reading sessions, and keep reading.",
+  "start_url": "/?source=pwa",
   "display": "standalone",
+  "scope": "/",
   "background_color": "#0B0B14",
-  "theme_color": "#0B0B14",
-  "orientation": "portrait",
+  "theme_color": "#D4A853",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/icons/screenshot-540.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/icons/screenshot-1280.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add a Book",
+      "short_name": "Add Book",
+      "description": "Quickly add a new book to your library",
+      "url": "/?shortcut=add-book",
+      "icons": [
+        {
+          "src": "/icons/add-book.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "My Library",
+      "short_name": "Library",
+      "description": "View your book collection",
+      "url": "/?shortcut=library",
+      "icons": [
+        {
+          "src": "/icons/library.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ],
   "categories": ["books", "lifestyle", "productivity"]

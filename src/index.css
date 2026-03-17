@@ -73,6 +73,33 @@ a { color: inherit; text-decoration: none; }
   position: relative;
 }
 
+/* ─── Beta Banner ──────────────────────────────────────── */
+
+.beta-banner {
+  background: linear-gradient(135deg, var(--primary) 0%, #c4943d 100%);
+  color: var(--bg);
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  letter-spacing: 0.4px;
+  box-shadow: 0 2px 8px rgba(212, 168, 83, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 999;
+}
+
+.beta-banner a {
+  color: var(--bg);
+  text-decoration: underline;
+  font-weight: 700;
+}
+
+.beta-banner a:hover {
+  opacity: 0.9;
+}
+
 /* ─── Typography helpers ─────────────────────────────────── */
 
 .serif { font-family: var(--font-serif); }
