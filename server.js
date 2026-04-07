@@ -78,7 +78,12 @@ function isOriginAllowed(origin) {
   const normalized = normalizeOrigin(origin);
   if (!normalized) return false;
   if (ALLOWED_ORIGINS.size === 0) return true;
-  return ALLOWED_ORIGINS.has(normalized);
+
+  for (const allowed of ALLOWED_ORIGINS) {
+    if (normalizeOrigin(allowed) === normalized) return true;
+  }
+
+  return false;
 }
 
 function corsHeadersForRequest(req) {
