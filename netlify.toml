@@ -1,0 +1,7 @@
+[build]
+  command = "bun run build"
+  publish = "dist"
+
+[[edge_functions]]
+  function = "basic-auth"
+  path = "/*"
