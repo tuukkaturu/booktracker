@@ -5,6 +5,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
 const PORT = parseInt(process.env.PORT ?? '3001');
 const HOST = '0.0.0.0';
 const IS_PROD = process.env.NODE_ENV === 'production';
+const SERVE_STATIC = process.env.SERVE_STATIC === 'true';
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const DIST_DIR = resolve(import.meta.dir, 'dist');
 const MAX_JSON_BODY_BYTES = 5_500_000; // ~5.5 MB JSON/base64 payload cap
@@ -350,7 +351,7 @@ Bun.serve({
     }
 
     // ── Static file serving in production ───────────────────────────────
-    if (IS_PROD) {
+    if (IS_PROD && SERVE_STATIC) {
       // Decode and normalise the path, then resolve against DIST_DIR
       let requestedPath;
       try {
