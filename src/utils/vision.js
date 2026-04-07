@@ -8,8 +8,11 @@ export async function identifyBookFromImage(dataUrl) {
   const mimeType = header.match(/data:(.*?);/)?.[1] ?? 'image/jpeg';
 
   const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+  const endpoint = apiBase
+    ? `${apiBase}/api/identify-book`
+    : '/.netlify/functions/identify-book';
 
-  const res = await fetch(`${apiBase}/api/identify-book`, {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mimeType, data }),

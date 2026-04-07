@@ -9,6 +9,7 @@ const SERVE_STATIC = process.env.SERVE_STATIC === 'true';
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const DIST_DIR = resolve(import.meta.dir, 'dist');
 const MAX_JSON_BODY_BYTES = 5_500_000; // ~5.5 MB JSON/base64 payload cap
+const API_SHARED_TOKEN = (process.env.API_SHARED_TOKEN ?? '').trim();
 const ALLOWED_ORIGINS = new Set(
   (process.env.ALLOWED_ORIGINS ?? '')
     .split(',')
@@ -95,10 +96,16 @@ function corsHeadersForRequest(req) {
   return {
     'Access-Control-Allow-Origin': normalized,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-token',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
+}
+
+function hasValidApiToken(req) {
+  if (!API_SHARED_TOKEN) return true;
+  const provided = (req.headers.get('x-api-token') ?? '').trim();
+  return provided === API_SHARED_TOKEN;
 }
 
 // ── Security headers applied to every response ────────────────────────────
@@ -195,6 +202,13 @@ Bun.serve({
         return Response.json(
           { error: 'Method not allowed.' },
           { status: 405, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
+      }
+
+      if (!hasValidApiToken(req)) {
+        return Response.json(
+          { error: 'Unauthorized API token.' },
+          { status: 401, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
         );
       }
 
