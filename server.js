@@ -179,9 +179,12 @@ Bun.serve({
       // Forward to Gemini — key never leaves this process
       let geminiRes;
       try {
-        geminiRes = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
+        geminiRes = await fetch(GEMINI_ENDPOINT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': GEMINI_API_KEY,
+          },
           body: JSON.stringify({
             contents: [{
               parts: [
