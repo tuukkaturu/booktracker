@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 // Bun automatically loads .env — GEMINI_API_KEY is available here, never sent to the client
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
 const PORT = parseInt(process.env.PORT ?? '3001');
+const HOST = process.env.HOST ?? '0.0.0.0';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const DIST_DIR = resolve(import.meta.dir, 'dist');
@@ -100,6 +101,7 @@ function jsonResponse(data, status = 200) {
 
 // ── Request handler ────────────────────────────────────────────────────────
 Bun.serve({
+  hostname: HOST,
   port: PORT,
 
   async fetch(req, server) {
@@ -265,7 +267,7 @@ Bun.serve({
   },
 });
 
-console.log(`\n  BookTracker API server  →  http://localhost:${PORT}\n`);
+console.log(`\n  BookTracker API server  →  http://${HOST}:${PORT}\n`);
 if (!GEMINI_API_KEY) {
   console.warn('  ⚠  GEMINI_API_KEY is not set in .env — book scanning will return 503.\n');
 }
