@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 // Bun automatically loads .env — GEMINI_API_KEY is available here, never sent to the client
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
 const PORT = parseInt(process.env.PORT ?? '3001');
-const HOST = process.env.HOST ?? '0.0.0.0';
+const HOST = '0.0.0.0';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const DIST_DIR = resolve(import.meta.dir, 'dist');
