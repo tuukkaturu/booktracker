@@ -8,6 +8,12 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const DIST_DIR = resolve(import.meta.dir, 'dist');
 const MAX_JSON_BODY_BYTES = 5_500_000; // ~5.5 MB JSON/base64 payload cap
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+);
 
 const GEMINI_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent';
@@ -56,6 +62,38 @@ setInterval(() => {
     if (now > entry.resetAt) rateMap.delete(ip);
   }
 }, RATE_WINDOW_MS);
+
+function normalizeOrigin(origin) {
+  if (!origin) return null;
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) return false;
+  if (ALLOWED_ORIGINS.size === 0) return true;
+  return ALLOWED_ORIGINS.has(normalized);
+}
+
+function corsHeadersForRequest(req) {
+  const origin = req.headers.get('origin');
+  const normalized = normalizeOrigin(origin);
+
+  if (!origin || !normalized || !isOriginAllowed(origin)) return {};
+
+  return {
+    'Access-Control-Allow-Origin': normalized,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  };
+}
 
 // ── Security headers applied to every response ────────────────────────────
 const SECURITY_HEADERS = {
@@ -108,30 +146,67 @@ Bun.serve({
     const url = new URL(req.url);
     const pathname = url.pathname;
 
+    // CORS preflight for cross-origin API calls (e.g. Netlify -> Railway)
+    if (req.method === 'OPTIONS' && pathname.startsWith('/api/')) {
+      if (!isOriginAllowed(req.headers.get('origin'))) {
+        return jsonResponse({ error: 'Forbidden origin.' }, 403);
+      }
+
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...SECURITY_HEADERS,
+          ...corsHeadersForRequest(req),
+        },
+      });
+    }
+
+    if (pathname.startsWith('/api/') && !isOriginAllowed(req.headers.get('origin'))) {
+      return jsonResponse({ error: 'Forbidden origin.' }, 403);
+    }
+
     // ── GET /api/health ────────────────────────────────────────────────
     if (pathname === '/api/health') {
-      return jsonResponse({
-        ok: true,
-        service: 'booktracker-api',
-        geminiConfigured: Boolean(GEMINI_API_KEY),
-      });
+      return Response.json(
+        {
+          ok: true,
+          service: 'booktracker-api',
+          geminiConfigured: Boolean(GEMINI_API_KEY),
+        },
+        {
+          status: 200,
+          headers: {
+            ...SECURITY_HEADERS,
+            ...corsHeadersForRequest(req),
+          },
+        }
+      );
     }
 
     // ── POST /api/identify-book ──────────────────────────────────────────
     if (pathname === '/api/identify-book' || pathname === '/api/identify-book/') {
       if (req.method !== 'POST') {
-        return jsonResponse({ error: 'Method not allowed.' }, 405);
+        return Response.json(
+          { error: 'Method not allowed.' },
+          { status: 405, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       if (!GEMINI_API_KEY) {
-        return jsonResponse({ error: 'Book scanning is not configured on this server.' }, 503);
+        return Response.json(
+          { error: 'Book scanning is not configured on this server.' },
+          { status: 503, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       // Rate limit by client IP (socket address by default)
       const ip = getClientIp(req, server);
 
       if (isRateLimited(ip)) {
-        return jsonResponse({ error: 'Too many requests. Try again in a minute.' }, 429);
+        return Response.json(
+          { error: 'Too many requests. Try again in a minute.' },
+          { status: 429, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       // Parse and validate body
@@ -141,41 +216,65 @@ Bun.serve({
         if (contentLengthHeader) {
           const length = Number(contentLengthHeader);
           if (!Number.isFinite(length) || length < 0) {
-            return jsonResponse({ error: 'Invalid Content-Length header.' }, 400);
+            return Response.json(
+              { error: 'Invalid Content-Length header.' },
+              { status: 400, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+            );
           }
           if (length > MAX_JSON_BODY_BYTES) {
-            return jsonResponse({ error: 'Request body too large.' }, 413);
+            return Response.json(
+              { error: 'Request body too large.' },
+              { status: 413, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+            );
           }
         }
 
         const rawBody = await req.text();
         if (rawBody.length > MAX_JSON_BODY_BYTES) {
-          return jsonResponse({ error: 'Request body too large.' }, 413);
+          return Response.json(
+            { error: 'Request body too large.' },
+            { status: 413, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+          );
         }
         body = JSON.parse(rawBody);
       } catch {
-        return jsonResponse({ error: 'Invalid JSON body.' }, 400);
+        return Response.json(
+          { error: 'Invalid JSON body.' },
+          { status: 400, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       const { mimeType, data } = body ?? {};
 
       if (typeof mimeType !== 'string' || typeof data !== 'string' || !mimeType || !data) {
-        return jsonResponse({ error: 'Missing required fields: mimeType and data.' }, 400);
+        return Response.json(
+          { error: 'Missing required fields: mimeType and data.' },
+          { status: 400, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       // Only accept image MIME types
       if (!mimeType.startsWith('image/')) {
-        return jsonResponse({ error: 'Only image types are accepted.' }, 400);
+        return Response.json(
+          { error: 'Only image types are accepted.' },
+          { status: 400, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       // Reject payloads over ~4 MB of base64 (≈ 3 MB decoded image)
       if (data.length > MAX_JSON_BODY_BYTES) {
-        return jsonResponse({ error: 'Image too large. Maximum size is ~4 MB.' }, 413);
+        return Response.json(
+          { error: 'Image too large. Maximum size is ~4 MB.' },
+          { status: 413, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       // Validate base64 characters (no script injection via the data field)
       if (!/^[A-Za-z0-9+/]+=*$/.test(data)) {
-        return jsonResponse({ error: 'Invalid base64 data.' }, 400);
+        return Response.json(
+          { error: 'Invalid base64 data.' },
+          { status: 400, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       // Forward to Gemini — key never leaves this process
@@ -198,29 +297,56 @@ Bun.serve({
           }),
         });
       } catch {
-        return jsonResponse({ error: 'Could not reach the AI service. Check your network.' }, 502);
+        return Response.json(
+          { error: 'Could not reach the AI service. Check your network.' },
+          { status: 502, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       if (!geminiRes.ok) {
         const err = await geminiRes.json().catch(() => ({}));
         const msg = err?.error?.message ?? `Upstream error ${geminiRes.status}`;
-        return jsonResponse({ error: msg }, 502);
+        return Response.json(
+          { error: msg },
+          { status: 502, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
       }
 
       const geminiJson = await geminiRes.json();
       const raw = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
       const match = raw.match(/\{[\s\S]*?\}/);
 
-      if (!match) return jsonResponse({ title: '', author: '' });
+      if (!match) {
+        return Response.json(
+          { title: '', author: '' },
+          { status: 200, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
+      }
 
       let parsed;
-      try { parsed = JSON.parse(match[0]); } catch { return jsonResponse({ title: '', author: '' }); }
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        return Response.json(
+          { title: '', author: '' },
+          { status: 200, headers: { ...SECURITY_HEADERS, ...corsHeadersForRequest(req) } }
+        );
+      }
 
       // Sanitize and cap lengths before returning to the client
-      return jsonResponse({
-        title:  String(parsed.title  ?? '').replace(/\0/g, '').trim().slice(0, 500),
-        author: String(parsed.author ?? '').replace(/\0/g, '').trim().slice(0, 300),
-      });
+      return Response.json(
+        {
+          title:  String(parsed.title  ?? '').replace(/\0/g, '').trim().slice(0, 500),
+          author: String(parsed.author ?? '').replace(/\0/g, '').trim().slice(0, 300),
+        },
+        {
+          status: 200,
+          headers: {
+            ...SECURITY_HEADERS,
+            ...corsHeadersForRequest(req),
+          },
+        }
+      );
     }
 
     // ── Static file serving in production ───────────────────────────────
@@ -233,7 +359,12 @@ Bun.serve({
         return new Response('Bad Request', { status: 400, headers: SECURITY_HEADERS });
       }
 
-      const filePath = resolve(join(DIST_DIR, requestedPath));
+      // Map root to index.html so we never try to serve a directory path.
+      if (requestedPath === '/') requestedPath = '/index.html';
+
+      const normalizedPath = requestedPath.replace(/^\/+/, '');
+
+      const filePath = resolve(join(DIST_DIR, normalizedPath));
 
       // Directory traversal guard — resolved path must stay inside DIST_DIR
       if (!filePath.startsWith(DIST_DIR + '/') && filePath !== DIST_DIR) {
@@ -244,8 +375,16 @@ Bun.serve({
       const exists = await file.exists();
 
       // SPA fallback
-      const finalFile = exists ? file : Bun.file(join(DIST_DIR, 'index.html'));
-      const ext = filePath.split('.').pop() ?? 'html';
+      const indexPath = join(DIST_DIR, 'index.html');
+      const indexFile = Bun.file(indexPath);
+      const indexExists = await indexFile.exists();
+
+      if (!exists && !indexExists) {
+        return jsonResponse({ error: 'Not found.' }, 404);
+      }
+
+      const finalFile = exists ? file : indexFile;
+      const ext = (exists ? filePath : indexPath).split('.').pop() ?? 'html';
       const contentType = MIME_TYPES[ext] ?? 'application/octet-stream';
 
       // Cache-bust: cache JS/CSS assets (they have hashed filenames), not HTML
